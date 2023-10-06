@@ -4,10 +4,8 @@ import sys
 # TODO: remove it when basicts can be installed by pip
 sys.path.append(os.path.abspath(__file__ + "/../../.."))
 import torch
-import numpy as np
-
 from easydict import EasyDict
-from basicts.utils import load_adj
+from basicts.utils.serialization import load_adj
 
 from basicts.archs import STEP
 from basicts.runners import STEPRunner
@@ -18,16 +16,17 @@ from basicts.data import TimeSeriesForecastingDataset
 CFG = EasyDict()
 
 # ================= general ================= #
-CFG.DESCRIPTION = "STEP(Hydro) configuration"
+CFG.DESCRIPTION = "STEP(PEMS07) configuration"
 CFG.RUNNER = STEPRunner
 CFG.DATASET_CLS = TimeSeriesForecastingDataset
-CFG.DATASET_NAME = "Hydro"
-CFG.DATASET_TYPE = "Electricity"
+CFG.DATASET_NAME = "PEMS07"
+CFG.DATASET_TYPE = "Traffic flow"
 CFG.DATASET_INPUT_LEN = 12
 CFG.DATASET_OUTPUT_LEN = 12
 CFG.DATASET_ARGS = {
-    "seq_len": 288 * 7 ,
-    "start_seq_len": 288 * 2,
+    "seq_len": 2004,
+    "start_seq_len": 2004,
+    "debug": True
     }
 CFG.GPU_NUM = 1
 
@@ -41,11 +40,10 @@ CFG.ENV.CUDNN.ENABLED = True
 CFG.MODEL = EasyDict()
 CFG.MODEL.NAME = "STEP"
 CFG.MODEL.ARCH = STEP
-# adj_mx, _ = load_adj("datasets/" + CFG.DATASET_NAME + "/adj_mx.pkl", "doubletransition")
-adj_mx = [np.zeros((80,80)),np.zeros((80,80))]
+adj_mx, _ = load_adj("datasets/" + CFG.DATASET_NAME + "/adj_mx.pkl", "doubletransition")
 CFG.MODEL.PARAM = {
     "dataset_name": CFG.DATASET_NAME,
-    "pre_trained_tsformer_path": "/home/hallie/Desktop/paper_code/BasicTS_np2/checkpoints/TSFormer_100/Hydro_2016_12_b499dc17c3d829fda6ceec8f57db1445/TSFormer_best_val_MAE.pt",
+    "pre_trained_tsformer_path": "",
     "tsformer_args": {
                     "patch_size":12,
                     "in_channel":1,
@@ -53,14 +51,20 @@ CFG.MODEL.PARAM = {
                     "num_heads":4,
                     "mlp_ratio":4,
                     "dropout":0.1,
-                    "num_token":288 * 7 / 12,
+                    "num_token":288 * 7 / 12, # 288 * 7
                     "mask_ratio":0.75,
                     "encoder_depth":4,
                     "decoder_depth":1,
-                    "mode":"forecasting"
+                    "mode":"3d-finetune",
+                    "mask_last_token": True,
+                    "pretrain_path": "tsformer_ckpt/TSFormer_PEMS07-3d.pt",
+                    "requires_grad": False,
+                    "decoding_knn": 15,
+                    "strict": True, # False when we train knn from original tsformer
+                    "decoding_knn_node": 5,
     },
     "backend_args": {
-                    "num_nodes" : 80,
+                    "num_nodes" : 883,
                     "supports"  :[torch.tensor(i) for i in adj_mx],         # the supports are not used
                     "dropout"   : 0.3,
                     "gcn_bool"  : True,
@@ -93,7 +97,7 @@ CFG.TRAIN.LOSS = step_loss
 CFG.TRAIN.OPTIM = EasyDict()
 CFG.TRAIN.OPTIM.TYPE = "Adam"
 CFG.TRAIN.OPTIM.PARAM= {
-    "lr":0.002,
+    "lr":0.001,
     "weight_decay":1.0e-5,
     "eps":1.0e-8,
 }
@@ -108,7 +112,7 @@ CFG.TRAIN.LR_SCHEDULER.PARAM= {
 CFG.TRAIN.CLIP_GRAD_PARAM = {
     "max_norm": 3.0
 }
-CFG.TRAIN.NUM_EPOCHS = 50
+CFG.TRAIN.NUM_EPOCHS = 100
 CFG.TRAIN.CKPT_SAVE_DIR = os.path.join(
     "checkpoints",
     "_".join([CFG.MODEL.NAME, str(CFG.TRAIN.NUM_EPOCHS)])
@@ -124,6 +128,11 @@ CFG.TRAIN.DATA.PREFETCH = False
 CFG.TRAIN.DATA.SHUFFLE = True
 CFG.TRAIN.DATA.NUM_WORKERS = 2
 CFG.TRAIN.DATA.PIN_MEMORY = True
+# curriculum learning
+CFG.TRAIN.CL = EasyDict()
+CFG.TRAIN.CL.WARM_EPOCHS = 0
+CFG.TRAIN.CL.CL_EPOCHS = 3
+CFG.TRAIN.CL.PREDICTION_LENGTH = 12
 
 # ================= validate ================= #
 CFG.VAL = EasyDict()
@@ -133,7 +142,7 @@ CFG.VAL.DATA = EasyDict()
 # read data
 CFG.VAL.DATA.DIR = "datasets/" + CFG.DATASET_NAME
 # dataloader args, optional
-CFG.VAL.DATA.BATCH_SIZE = 8
+CFG.VAL.DATA.BATCH_SIZE = 1
 CFG.VAL.DATA.PREFETCH = False
 CFG.VAL.DATA.SHUFFLE = False
 CFG.VAL.DATA.NUM_WORKERS = 2
@@ -148,7 +157,7 @@ CFG.TEST.DATA = EasyDict()
 # read data
 CFG.TEST.DATA.DIR = "datasets/" + CFG.DATASET_NAME
 # dataloader args, optional
-CFG.TEST.DATA.BATCH_SIZE = 8
+CFG.TEST.DATA.BATCH_SIZE = 1
 CFG.TEST.DATA.PREFETCH = False
 CFG.TEST.DATA.SHUFFLE = False
 CFG.TEST.DATA.NUM_WORKERS = 2
