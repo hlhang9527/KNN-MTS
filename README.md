@@ -1,4 +1,4 @@
-This repo contains the baselines and our proposed framework code. 
+This repo contains the baselines and our proposed framework code, the latest version of the code will be organized and released soon.
 To run the code:
 
 First:
